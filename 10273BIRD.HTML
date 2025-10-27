@@ -346,7 +346,6 @@
             <button id="triggerUFOBtn">🛸 Trigger UFO</button>
             <button id="triggerMigrationBtn">🦅 Trigger Migration</button>
             <button id="triggerFirefliesBtn">✨ Trigger Fireflies</button>
-            <button id="triggerLightningBtn">⚡ Trigger Lightning</button>
         </div>
 
     <div id="screenshotMessage" class="screenshot-message">Screenshot saved!</div>
@@ -19561,6 +19560,12 @@ triggerUFOBtn.addEventListener('click', () => {
 
         if (potentialTargets.length > 0) {
             const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+
+            // FIXED: If target is ant, select a specific ant entity
+            if (target.type === 'ant') {
+                target.entity = ants[Math.floor(Math.random() * ants.length)];
+            }
+
             const startX = Math.random() < 0.5 ? -100 : canvas.width + 100;
 
             // FIXED: Added missing properties for UFO animation
@@ -19646,27 +19651,7 @@ triggerFirefliesBtn.addEventListener('click', () => {
     debugLog(`Firefly night triggered manually (${count} fireflies)`);
 });
 
-const triggerLightningBtn = document.getElementById('triggerLightningBtn');
-triggerLightningBtn.addEventListener('click', () => {
-    if (trees.length > 0) {
-        const randomTree = trees[Math.floor(Math.random() * trees.length)];
-        lightningStrikes.push({
-            x: randomTree.x,
-            y: 0,
-            targetY: randomTree.y - randomTree.trunkHeight,
-            alpha: 1.0,
-            tree: randomTree
-        });
-
-        randomTree.health -= LIGHTNING_TREE_DAMAGE;
-        if (randomTree.health <= 0 && Math.random() < SPECIAL_TWIG_CHANCE) {
-            createSpecialTwigsFromTree(randomTree);
-        }
-        debugLog(`Lightning manually triggered on tree at (${randomTree.x})`);
-    } else {
-        debugLog("No trees available for lightning strike");
-    }
-});
+// REMOVED: Trigger Lightning button - was causing white screen issues
 
 const toggleWindChimeBtn = document.getElementById('toggleWindChimeBtn');
 if (toggleWindChimeBtn) {

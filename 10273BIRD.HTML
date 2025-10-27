@@ -1589,6 +1589,7 @@ let ants = [];
         let mouseX = 0;
         let mouseY = 0;
         let hoveredBird = null;
+        let hoveredTree = null;
         let lockedAnimal = null; // Can be bird, squirrel, rat, crow, owl, or tree
         let lockedAnimalType = null; // Type of locked animal
         let lockedAnimalTime = 0; // Track when animal was locked for auto-fade
@@ -5171,6 +5172,47 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                 ctx.stroke();
             }
 
+            // FIXED: Draw hover info for trees
+            if (hoveredTree) {
+                const treeName = getTreeName(hoveredTree);
+                const healthPercent = Math.round(hoveredTree.health);
+                const agePercent = Math.round((hoveredTree.age / TREE_LIFESPAN) * 100);
+                const labelText = `${treeName} (HP: ${healthPercent}%, Age: ${agePercent}%)`;
+
+                // Position label above tree crown
+                const labelX = hoveredTree.x;
+                const labelY = hoveredTree.y - hoveredTree.trunkHeight - hoveredTree.leafRadius - 20;
+
+                // Measure text for background sizing
+                ctx.font = 'bold 14px Arial';
+                const textMetrics = ctx.measureText(labelText);
+                const padding = 8;
+                const bgWidth = textMetrics.width + padding * 2;
+                const bgHeight = 20;
+
+                // Draw background with high contrast
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                ctx.fillRect(labelX - bgWidth / 2, labelY - bgHeight / 2, bgWidth, bgHeight);
+
+                // Draw border for visibility
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(labelX - bgWidth / 2, labelY - bgHeight / 2, bgWidth, bgHeight);
+
+                // Draw text in high-contrast color
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, labelX, labelY);
+
+                // Draw slight highlight circle around hovered tree crown
+                ctx.strokeStyle = 'rgba(100, 255, 100, 0.5)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(hoveredTree.x, hoveredTree.y - hoveredTree.trunkHeight, hoveredTree.leafRadius * hoveredTree.scale + 10, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
             // Draw locked animal indicator and follow camera
             if (lockedAnimal && lockedAnimalType) {
                 // Check if animal still exists
@@ -5578,14 +5620,8 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                 const completionRatio = this.materialsCollected / NEST_MATERIALS_NEEDED;
                 const nestSize = 15 + completionRatio * 15;
 
-                // FIXED: Apply parallax offset if nest has a parent tree (prevents detachment when camera locked)
-                let parallaxOffsetX = 0;
-                let parallaxOffsetY = 0;
-                if (this.tree && lockedAnimal) {
-                    const parallaxFactor = this.tree.depth ? (1 - this.tree.depth * 0.5) : 1.0;
-                    parallaxOffsetX = cameraOffsetX * (1 - parallaxFactor);
-                    parallaxOffsetY = cameraOffsetY * (1 - parallaxFactor);
-                }
+                // FIXED: Removed parallax offset - nests stay fixed with trees in world space
+                // Trees no longer use parallax, so nests shouldn't either
 
                 // Base of the nest - color varies with condition
                 const conditionRatio = Math.max(0, this.condition / 100);
@@ -5609,7 +5645,7 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
 
                 ctx.fillStyle = nestColor;
                 ctx.beginPath();
-                ctx.arc(this.x + parallaxOffsetX, this.y + parallaxOffsetY, nestSize, 0, Math.PI);
+                ctx.arc(this.x, this.y, nestSize, 0, Math.PI);
                 ctx.fill();
                 
                 // Add detail to the nest based on completion and condition
@@ -5644,20 +5680,20 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                             
                             ctx.beginPath();
                             ctx.moveTo(
-                                this.x + parallaxOffsetX + nestSize * Math.cos(angle),
-                                this.y + parallaxOffsetY + nestSize * Math.sin(angle) * 0.5
+                                this.x + nestSize * Math.cos(angle),
+                                this.y + nestSize * Math.sin(angle) * 0.5
                             );
                             ctx.lineTo(
-                                this.x + parallaxOffsetX + (nestSize + twigInfo.length) * Math.cos(angle),
-                                this.y + parallaxOffsetY + (nestSize + twigInfo.length) * Math.sin(angle) * 0.5
+                                this.x + (nestSize + twigInfo.length) * Math.cos(angle),
+                                this.y + (nestSize + twigInfo.length) * Math.sin(angle) * 0.5
                             );
                             ctx.stroke();
 
                             // Some twigs appear loose in poor condition nests
                             if (this.condition < 50 && Math.random() < 0.3) {
                                 ctx.beginPath();
-                                const looseX = this.x + parallaxOffsetX + (nestSize + twigInfo.length * 0.6) * Math.cos(angle);
-                                const looseY = this.y + parallaxOffsetY + (nestSize + twigInfo.length * 0.6) * Math.sin(angle) * 0.5;
+                                const looseX = this.x + (nestSize + twigInfo.length * 0.6) * Math.cos(angle);
+                                const looseY = this.y + (nestSize + twigInfo.length * 0.6) * Math.sin(angle) * 0.5;
                                 const fallAngle = angle + (Math.random() - 0.5) * 0.5;
 
                                 ctx.moveTo(looseX, looseY);
@@ -5680,7 +5716,7 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                     
                     ctx.fillStyle = innerColor;
                     ctx.beginPath();
-                    ctx.arc(this.x + parallaxOffsetX, this.y + parallaxOffsetY, nestSize * 0.7, 0, Math.PI);
+                    ctx.arc(this.x, this.y, nestSize * 0.7, 0, Math.PI);
                     ctx.fill();
                     
                     // Draw rat in nest if occupied by one
@@ -6857,14 +6893,11 @@ function drawWorms() {
                 // Apply depth scale
                 ctx.save();
 
-                // Apply parallax effect based on depth when camera is following an entity
-                // Background trees (depth closer to 1) move less than foreground trees (depth closer to 0)
-                const parallaxFactor = lockedAnimal ? (1 - this.depth * 0.5) : 1.0;
-                const parallaxOffsetX = lockedAnimal ? cameraOffsetX * (1 - parallaxFactor) : 0;
-                const parallaxOffsetY = lockedAnimal ? cameraOffsetY * (1 - parallaxFactor) : 0;
+                // FIXED: Removed parallax offset - trees should stay fixed in world space
+                // The camera transform already handles movement, parallax was causing trees to appear to float
 
-                // Center on tree position with parallax adjustment
-                ctx.translate(this.x + parallaxOffsetX, this.y + parallaxOffsetY);
+                // Center on tree position (no parallax adjustment needed)
+                ctx.translate(this.x, this.y);
                 ctx.scale(this.scale, this.scale);
                 
                 // Trunk (drawing relative to 0,0)
@@ -20099,6 +20132,19 @@ canvas.addEventListener('mousemove', (e) => {
         );
         if (dist < 25) { // 25px hover radius
             hoveredBird = bird;
+            break;
+        }
+    }
+
+    // Find tree under cursor
+    hoveredTree = null;
+    for (const tree of trees) {
+        const dist = Math.sqrt(
+            Math.pow(mouseX - tree.x, 2) +
+            Math.pow(mouseY - (tree.y - tree.trunkHeight/2), 2)
+        );
+        if (dist < tree.trunkWidth * 2 + 50) { // Larger hover area for trees
+            hoveredTree = tree;
             break;
         }
     }

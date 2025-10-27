@@ -1846,7 +1846,7 @@ let rainsCompleted = 0; // Track number of completed rain events (for pond forma
         const STAR_COUNT = 100;
         const WORM_WIGGLE_SPEED = 0.1;
         const MAX_RATS = 5; // Reduced from 6
-        const RAT_KING_FORMATION_CHANCE = 0.10; // Reduced from 0.2
+        const RAT_KING_FORMATION_CHANCE = 0.03; // FIXED: Much rarer (3% instead of 10%)
         const MAX_SQUIRRELS = 3; // Reduced from 4
         const TWIG_SPAWN_RATE = 10000; // Every 10 (?) seconds
         const ANT_SPEED = 0.6;
@@ -2412,6 +2412,35 @@ function createFlower(x, y) {
 
         function updateWindChimes(deltaTime) {
             windChimes.forEach(chime => {
+                // FIXED: Check if tree still exists, if not, make chime fall to ground
+                if (chime.treeId) {
+                    const tree = trees.find(t => t.id === chime.treeId);
+                    if (!tree) {
+                        // Tree disappeared, make chime fall
+                        if (!chime.falling) {
+                            chime.falling = true;
+                            chime.fallVelocity = 0;
+                            debugLog("Wind chime falling - tree disappeared!");
+                        }
+                    }
+                }
+
+                // Handle falling animation
+                if (chime.falling) {
+                    const groundLevel = canvas.height * GROUND_HEIGHT_RATIO;
+                    if (chime.y < groundLevel) {
+                        chime.fallVelocity += 0.2; // Gravity
+                        chime.y += chime.fallVelocity;
+                        // Remove tree association while falling
+                        chime.treeId = null;
+                    } else {
+                        // Landed on ground
+                        chime.y = groundLevel;
+                        chime.falling = false;
+                        chime.fallVelocity = 0;
+                    }
+                }
+
                 // Swing animation
                 chime.swingAngle += chime.swingSpeed * (deltaTime / 16);
 
@@ -3296,8 +3325,8 @@ function createFlower(x, y) {
             // Check if already active or on cooldown
             if (migrationWave || Date.now() < specialEventCooldown) return;
 
-            // FIXED: Made much rarer (0.05% = once every ~5-10 mins at 60fps)
-            if (Math.random() > 0.0005) return;
+            // FIXED: Made MUCH rarer (0.01% = once every ~15-30 mins at 60fps)
+            if (Math.random() > 0.0001) return;
 
             // Start migration wave
             const birdCount = 10 + Math.floor(Math.random() * 6); // 10-15 birds
@@ -3335,7 +3364,7 @@ function createFlower(x, y) {
                     targetX: (direction > 0 ? canvas.width + 50 : -50) + offsetX,
                     targetY: startY + offsetY,
                     speed: 2 + Math.random() * 0.5,
-                    wingFlap: Math.random() * Math.PI * 2,
+                    wingFlap: 0, // FIXED: Start all birds with synchronized wing flaps
                     size: 0.8 + Math.random() * 0.4
                 });
             }
@@ -3546,7 +3575,8 @@ if (isTabVisible) {
 }
 
 // Spawn mushroom clusters near trees after rain (damp conditions)
-if (trees.length > 0 && Math.random() < 0.4) { // 40% chance per rain
+// FIXED: Made much more rare (15% chance instead of 40%)
+if (trees.length > 0 && Math.random() < 0.15) {
     const numClusters = 1 + Math.floor(Math.random() * 3); // 1-3 clusters
     for (let i = 0; i < numClusters; i++) {
         const tree = trees[Math.floor(Math.random() * trees.length)];
@@ -4491,7 +4521,8 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
 
     // Start of night - randomly determine if fireflies should appear (35% chance)
     if (previousTimeOfDay < 1 && timeOfDay >= 1) {
-        fireflyNightActive = Math.random() < 0.35;
+        // FIXED: Made fireflies much more rare (10% chance instead of 35%)
+        fireflyNightActive = Math.random() < 0.10;
         if (fireflyNightActive) {
             debugLog('Fireflies will appear tonight');
         }
@@ -4861,7 +4892,9 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
             }
 
             ctx.fillStyle = skyColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height * GROUND_HEIGHT_RATIO);
+            // FIXED: Extend sky to cover entire canvas even when camera is zoomed/panned
+            // Draw a much larger rectangle to prevent whitespace when locked on
+            ctx.fillRect(-canvas.width, -canvas.height, canvas.width * 3, canvas.height * GROUND_HEIGHT_RATIO * 3);
 
             // Mushroom mode sky effects
             if (mushroomMode) {
@@ -4877,7 +4910,8 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                     }
 
                     ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, canvas.width, canvas.height * GROUND_HEIGHT_RATIO);
+                    // FIXED: Extend for camera zoom
+                    ctx.fillRect(-canvas.width, -canvas.height, canvas.width * 3, canvas.height * GROUND_HEIGHT_RATIO * 3);
 
                     for (let i = 0; i < 3; i++) {
                         const circleX = (canvas.width / 3) * (i + 1) + Math.sin(time + i) * 100;
@@ -5515,7 +5549,16 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
             draw() {
                 const completionRatio = this.materialsCollected / NEST_MATERIALS_NEEDED;
                 const nestSize = 15 + completionRatio * 15;
-                
+
+                // FIXED: Apply parallax offset if nest has a parent tree (prevents detachment when camera locked)
+                let parallaxOffsetX = 0;
+                let parallaxOffsetY = 0;
+                if (this.tree && lockedAnimal) {
+                    const parallaxFactor = this.tree.depth ? (1 - this.tree.depth * 0.5) : 1.0;
+                    parallaxOffsetX = cameraOffsetX * (1 - parallaxFactor);
+                    parallaxOffsetY = cameraOffsetY * (1 - parallaxFactor);
+                }
+
                 // Base of the nest - color varies with condition
                 const conditionRatio = Math.max(0, this.condition / 100);
                 const baseColor = this.ratOccupied ? '#966F33' : '#8B4513'; // Base color when good condition
@@ -5535,10 +5578,10 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                 const b = Math.round(b1 * conditionRatio + b2 * (1 - conditionRatio));
                 
                 const nestColor = `rgb(${r}, ${g}, ${b})`;
-                
+
                 ctx.fillStyle = nestColor;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, nestSize, 0, Math.PI);
+                ctx.arc(this.x + parallaxOffsetX, this.y + parallaxOffsetY, nestSize, 0, Math.PI);
                 ctx.fill();
                 
                 // Add detail to the nest based on completion and condition
@@ -5573,22 +5616,22 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                             
                             ctx.beginPath();
                             ctx.moveTo(
-                                this.x + nestSize * Math.cos(angle), 
-                                this.y + nestSize * Math.sin(angle) * 0.5
+                                this.x + parallaxOffsetX + nestSize * Math.cos(angle),
+                                this.y + parallaxOffsetY + nestSize * Math.sin(angle) * 0.5
                             );
                             ctx.lineTo(
-                                this.x + (nestSize + twigInfo.length) * Math.cos(angle),
-                                this.y + (nestSize + twigInfo.length) * Math.sin(angle) * 0.5
+                                this.x + parallaxOffsetX + (nestSize + twigInfo.length) * Math.cos(angle),
+                                this.y + parallaxOffsetY + (nestSize + twigInfo.length) * Math.sin(angle) * 0.5
                             );
                             ctx.stroke();
-                            
+
                             // Some twigs appear loose in poor condition nests
                             if (this.condition < 50 && Math.random() < 0.3) {
                                 ctx.beginPath();
-                                const looseX = this.x + (nestSize + twigInfo.length * 0.6) * Math.cos(angle);
-                                const looseY = this.y + (nestSize + twigInfo.length * 0.6) * Math.sin(angle) * 0.5;
+                                const looseX = this.x + parallaxOffsetX + (nestSize + twigInfo.length * 0.6) * Math.cos(angle);
+                                const looseY = this.y + parallaxOffsetY + (nestSize + twigInfo.length * 0.6) * Math.sin(angle) * 0.5;
                                 const fallAngle = angle + (Math.random() - 0.5) * 0.5;
-                                
+
                                 ctx.moveTo(looseX, looseY);
                                 ctx.lineTo(
                                     looseX + twigInfo.length * 0.4 * Math.cos(fallAngle),
@@ -5609,7 +5652,7 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
                     
                     ctx.fillStyle = innerColor;
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, nestSize * 0.7, 0, Math.PI);
+                    ctx.arc(this.x + parallaxOffsetX, this.y + parallaxOffsetY, nestSize * 0.7, 0, Math.PI);
                     ctx.fill();
                     
                     // Draw rat in nest if occupied by one
@@ -5934,9 +5977,10 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
         
         // Increment the babies born counter
         totalBabiesBorn++;
-        
-        // Create a flower where the baby matured
-        createFlower(this.x, this.y);
+
+        // FIXED: Create a flower NEAR the tree (not directly under) where the baby matured
+        const flowerOffsetX = (Math.random() - 0.5) * 100; // Random offset ±50px horizontally
+        createFlower(this.x + flowerOffsetX, this.y);
 
             // Reset the nest to be ready for new babies after a delay
             if (this.associatedNest) {
@@ -6525,8 +6569,11 @@ function drawWorms() {
                     );
                     if (distToPond < pond.width) {
                         isInPond = true;
-                        // Flatten the branch to be more horizontal (Frogger reference)
-                        adjustedAngle = (Math.random() - 0.5) * Math.PI * 0.2; // Nearly horizontal
+                        // FIXED: Save pond angle only once to prevent shaking
+                        if (!twig.pondAngle) {
+                            twig.pondAngle = (Math.random() - 0.5) * Math.PI * 0.2; // Nearly horizontal
+                        }
+                        adjustedAngle = twig.pondAngle;
                         break;
                     }
                 }
@@ -6750,15 +6797,15 @@ function drawWorms() {
                         // Determine which side the branch comes out on
                         const isRightSide = Math.random() > 0.5;
 
-                        // FIXED: More angle variations for natural look
+                        // FIXED: Avoid vertical/near-vertical branches for more natural look
                         let branchAngle;
 
                         if (isRightSide) {
-                            // Right side branches - MORE variation (-π/6 to -3π/4)
-                            branchAngle = -Math.PI/6 - Math.random() * (7*Math.PI/12);
+                            // Right side branches - avoid vertical (range: -π/6 to -π/2.5, i.e., -30° to -72°)
+                            branchAngle = -Math.PI/6 - Math.random() * (Math.PI/3);
                         } else {
-                            // Left side branches - MORE variation (7π/6 to 11π/6)
-                            branchAngle = (7 * Math.PI)/6 + Math.random() * (2*Math.PI/3);
+                            // Left side branches - avoid vertical (range: 7π/6 to 4π/3, i.e., 210° to 240°)
+                            branchAngle = (7 * Math.PI)/6 + Math.random() * (Math.PI/6);
                         }
 
                         // Vary height more naturally along the trunk
@@ -16142,8 +16189,25 @@ function drawAnts() {
                 const x = Math.random() < 0.5 ? -30 : canvas.width + 30;
                 const y = canvas.height * GROUND_HEIGHT_RATIO;
 
-                // Reduced chance to spawn a rat king
-                const isRatKing = rats.length > 0 && Math.random() < RAT_KING_FORMATION_CHANCE;
+                // FIXED: Rat king only spawns if there are 2+ rats close together (overlapping)
+                let isRatKing = false;
+                if (rats.length >= 2 && Math.random() < RAT_KING_FORMATION_CHANCE) {
+                    // Check if any 2 rats are overlapping (within 50px of each other)
+                    let foundOverlap = false;
+                    for (let i = 0; i < rats.length && !foundOverlap; i++) {
+                        for (let j = i + 1; j < rats.length; j++) {
+                            const dist = Math.sqrt(
+                                Math.pow(rats[i].x - rats[j].x, 2) +
+                                Math.pow(rats[i].y - rats[j].y, 2)
+                            );
+                            if (dist < 50) {
+                                foundOverlap = true;
+                                break;
+                            }
+                        }
+                    }
+                    isRatKing = foundOverlap;
+                }
 
                 // Create rat
                 const rat = new Rat(x, y, isRatKing);
@@ -19407,14 +19471,15 @@ triggerMeteorBtn.addEventListener('click', () => {
 const triggerEclipseBtn = document.getElementById('triggerEclipseBtn');
 triggerEclipseBtn.addEventListener('click', () => {
     if (!eclipse) {
+        // FIXED: Start at totality (phase 1) so eclipse sun/moon is visible immediately
         eclipse = {
             active: true,
-            phase: 0,
-            elapsed: 0,
+            phase: 1,
+            elapsed: 18000, // 30% of 60000ms (start of totality phase)
             totalDuration: 60000,
-            darkness: 0
+            darkness: 1.0
         };
-        debugLog("Eclipse triggered manually");
+        debugLog("Eclipse triggered manually at totality");
     } else {
         debugLog("Eclipse already active");
     }
@@ -19435,16 +19500,19 @@ triggerUFOBtn.addEventListener('click', () => {
             const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
             const startX = Math.random() < 0.5 ? -100 : canvas.width + 100;
 
+            // FIXED: Added missing properties for UFO animation
             ufo = {
                 x: startX,
                 y: -50,
                 vx: 0,
-                vy: 0,
+                vy: 1.5,
                 state: 'approaching',
                 target: target,
                 beamProgress: 0,
                 beamWidth: 0,
-                returnTime: 0
+                rotation: 0,
+                glowPhase: 0,
+                hoverOffset: 0
             };
             debugLog(`UFO triggered manually targeting ${target.type}`);
         } else {
@@ -19489,7 +19557,7 @@ triggerMigrationBtn.addEventListener('click', () => {
                 targetX: (direction > 0 ? canvas.width + 50 : -50) + offsetX,
                 targetY: startY + offsetY,
                 speed: 2 + Math.random() * 0.5,
-                wingFlap: Math.random() * Math.PI * 2,
+                wingFlap: 0, // FIXED: Synchronized wing flaps
                 size: 0.8 + Math.random() * 0.4
             });
         }
@@ -19848,27 +19916,28 @@ if (gameboy) {
         }
     }
 
-    // Check trees
-    for (const tree of trees) {
-        const treeDist = Math.sqrt(
-            Math.pow(scaledX - tree.x, 2) +
-            Math.pow(scaledY - (tree.y - tree.trunkHeight/2), 2)
-        );
-        if (treeDist < tree.trunkWidth * 2 + 50) { // Larger click area for trees
-            clickedAnAnimal = true;
-            if (lockedAnimal === tree && lockedAnimalType === 'tree') {
-                lockedAnimal = null;
-                lockedAnimalType = null;
-                debugLog(`Unlocked from tree`);
-            } else {
-                lockedAnimal = tree;
-                lockedAnimalType = 'tree';
-                lockedAnimalTime = Date.now(); // Set lock time for auto-fade
-                debugLog(`Locked onto tree: ${getTreeName(tree)}`);
-            }
-            return;
-        }
-    }
+    // FIXED: Trees are no longer lockable (click-to-lock disabled, hover info still works)
+    // Check trees - DISABLED for locking
+    // for (const tree of trees) {
+    //     const treeDist = Math.sqrt(
+    //         Math.pow(scaledX - tree.x, 2) +
+    //         Math.pow(scaledY - (tree.y - tree.trunkHeight/2), 2)
+    //     );
+    //     if (treeDist < tree.trunkWidth * 2 + 50) { // Larger click area for trees
+    //         clickedAnAnimal = true;
+    //         if (lockedAnimal === tree && lockedAnimalType === 'tree') {
+    //             lockedAnimal = null;
+    //             lockedAnimalType = null;
+    //             debugLog(`Unlocked from tree`);
+    //         } else {
+    //             lockedAnimal = tree;
+    //             lockedAnimalType = 'tree';
+    //             lockedAnimalTime = Date.now(); // Set lock time for auto-fade
+    //             debugLog(`Locked onto tree: ${getTreeName(tree)}`);
+    //         }
+    //         return;
+    //     }
+    // }
 
     // Check frogs
     for (const frog of frogs) {

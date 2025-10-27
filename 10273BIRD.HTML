@@ -5175,8 +5175,8 @@ currentHour = Math.floor(((timeOfDay < 1 ? timeOfDay * 12 : 12 + (timeOfDay - 1)
             if (hoveredTree) {
                 const treeName = getTreeName(hoveredTree);
                 const healthPercent = Math.round(hoveredTree.health);
-                const agePercent = Math.round((hoveredTree.age / TREE_LIFESPAN) * 100);
-                const labelText = `${treeName} (HP: ${healthPercent}%, Age: ${agePercent}%)`;
+                const ageDays = Math.round(hoveredTree.age / dayNightDuration);
+                const labelText = `${treeName} (HP: ${healthPercent}%, Age: ${ageDays} days)`;
 
                 // Position label above tree crown
                 const labelX = hoveredTree.x;
